@@ -7,13 +7,15 @@ services:
       dockerfile: Dockerfile
     environment:
       - DMR_BASE_URL=${DMR_BASE_URL}
-      - MODEL_RUNNER_MODEL=${MODEL_RUNNER_MODEL}
+      - MODEL_RUNNER_CHAT_MODEL=${MODEL_RUNNER_CHAT_MODEL}
+      - MODEL_RUNNER_TOOLS_MODEL=${MODEL_RUNNER_TOOLS_MODEL}
       - MODEL_RUNNER_EMBEDDING_MODEL=${MODEL_RUNNER_EMBEDDING_MODEL}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
-      - download-model
+      - download-chat-model
       - download-embedding-model
+      - download-tools-model
     develop:
       watch:
         - action: rebuild
@@ -38,14 +40,20 @@ services:
         - action: rebuild
           path: ./frontend/app.py
 
-  download-model:
+  download-chat-model:
     provider:
       type: model
       options:
-        model: ${MODEL_RUNNER_MODEL}
+        model: ${MODEL_RUNNER_CHAT_MODEL}
 
   download-embedding-model:
     provider:
       type: model
       options:
         model: ${MODEL_RUNNER_EMBEDDING_MODEL}
+
+  download-tools-model:
+    provider:
+      type: model
+      options:
+        model: ${MODEL_RUNNER_TOOLS_MODEL}

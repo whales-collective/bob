@@ -7,13 +7,15 @@ services:
       dockerfile: Dockerfile
     environment:
       - DMR_BASE_URL=${DMR_BASE_URL}
-      - MODEL_RUNNER_MODEL=${MODEL_RUNNER_MODEL}
+      - MODEL_RUNNER_CHAT_MODEL=${MODEL_RUNNER_CHAT_MODEL}
+      - MODEL_RUNNER_TOOLS_MODEL=${MODEL_RUNNER_TOOLS_MODEL}
       - MODEL_RUNNER_EMBEDDING_MODEL=${MODEL_RUNNER_EMBEDDING_MODEL}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
-      - download-model
+      - download-chat-model
       - download-embedding-model
+      - download-tools-model
     develop:
       watch:
         - action: rebuild
@@ -39,13 +41,13 @@ services:
           path: ./frontend/app.py
 
 
-  download-model:
+  download-chat-model:
     image: curlimages/curl:8.12.1
     entrypoint: |
       sh -c '
       # Download Chat model
       curl -s "${DMR_BASE_URL}/models/create" -d @- << EOF
-      {"from": "${MODEL_RUNNER_MODEL}"}
+      {"from": "${MODEL_RUNNER_CHAT_MODEL}"}
       EOF
       '
 
@@ -56,5 +58,15 @@ services:
       # Download Chat model
       curl -s "${DMR_BASE_URL}/models/create" -d @- << EOF
       {"from": "${MODEL_RUNNER_EMBEDDING_MODEL}"}
+      EOF
+      '
+
+  download-tools-model:
+    image: curlimages/curl:8.12.1
+    entrypoint: |
+      sh -c '
+      # Download Chat model
+      curl -s "${DMR_BASE_URL}/models/create" -d @- << EOF
+      {"from": "${MODEL_RUNNER_TOOLS_MODEL}"}
       EOF
       '

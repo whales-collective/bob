@@ -26,8 +26,7 @@
 				"ms-python.python",
 
 				"golang.go",
-				"tamasfe.even-better-toml",
-				"aaron-bond.better-comments",
+				"tamasfe.even-better-toml"
 			]
 		}
 	},
