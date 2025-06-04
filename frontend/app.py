@@ -3,7 +3,7 @@ import requests
 import os
 from datetime import datetime
 
-PAGE_TITLE = os.environ.get('PAGE_TITLE', 'Web Chat Bot demo')
+#PAGE_TITLE = os.environ.get('PAGE_TITLE', 'Web Chat Bot demo')
 PAGE_HEADER = os.environ.get('PAGE_HEADER', 'Made with Streamlit and LangChainJS')
 
 PAGE_ICON = os.environ.get('PAGE_ICON', '🚀')
@@ -134,7 +134,7 @@ def increment_input_key():
     st.session_state.input_key += 1
 
 # Page title
-st.title(PAGE_TITLE)
+#st.title(PAGE_TITLE)
 st.header(PAGE_HEADER)
 
 # Session ID input
