@@ -1,0 +1,51 @@
+services:
+# docker compose up --build
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    environment:
+      - DMR_BASE_URL=${DMR_BASE_URL}
+      - MODEL_RUNNER_MODEL=${MODEL_RUNNER_MODEL}
+      - MODEL_RUNNER_EMBEDDING_MODEL=${MODEL_RUNNER_EMBEDDING_MODEL}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      - download-model
+      - download-embedding-model
+    develop:
+      watch:
+        - action: rebuild
+          path: ./backend
+          include: ["*.go"]
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - 9090:8501
+    environment:
+      - BACKEND_SERVICE_URL=http://backend:5050
+      - PAGE_TITLE=""
+      - PAGE_HEADER=🐳 Docker Model Runner Demo
+      - PAGE_ICON=🤖
+    depends_on:
+      - backend
+    develop:
+      watch:
+        - action: rebuild
+          path: ./frontend/app.py
+
+  download-model:
+    provider:
+      type: model
+      options:
+        model: ${MODEL_RUNNER_MODEL}
+
+  download-embedding-model:
+    provider:
+      type: model
+      options:
+        model: ${MODEL_RUNNER_EMBEDDING_MODEL}
