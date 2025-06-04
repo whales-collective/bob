@@ -14,7 +14,7 @@ LLM_EMBEDDINGS= os.environ.get('MODEL_RUNNER_EMBEDDING_MODEL', '')
 # Configuration of the Streamlit page
 #st.set_page_config(page_title=PAGE_TITLE, page_icon=PAGE_ICON)
 
-# Hide the Deploy button
+# Hide the Deploy button and adjust header position
 st.markdown("""
     <style>
     .stDeployButton {
@@ -23,6 +23,22 @@ st.markdown("""
     /* Ensure fonts render correctly for monospace content */
     code, pre {
         font-family: 'Courier New', Courier, monospace;
+    }
+    /* Reduce top margin/padding for the main content */
+    .main .block-container {
+        padding-top: 1rem;
+        padding-bottom: 10rem;
+        margin-top: 0.7rem;
+    }
+    /* Adjust header spacing */
+    h2 {
+        text-align: center !important;
+        margin-top: 0rem !important;
+        padding-top: 0rem !important;
+    }
+    h1, h3 {
+        margin-top: 0rem !important;
+        padding-top: 0rem !important;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -133,7 +149,7 @@ def increment_input_key():
     """Increment the input key to reset the input field"""
     st.session_state.input_key += 1
 
-# Page title
+# Page title - moved higher with reduced spacing
 #st.title(PAGE_TITLE)
 st.header(PAGE_HEADER)
 
