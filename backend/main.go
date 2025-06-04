@@ -1,7 +1,6 @@
 package main
 
 import (
-	"we-are-legion/agents"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -9,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"we-are-legion/agents"
 
 	"github.com/openai/openai-go"
 	"github.com/sea-monkeys/robby"
@@ -31,6 +31,10 @@ func main() {
 	if err != nil {
 		log.Fatal("😡 Error creating Bob agent: ", err)
 	}
+	bobSystemInstructions := openai.SystemMessage(`
+		Your name is Bob, 
+		You are a the original Bob
+	`)
 
 	// NOTE: we need a separate agent for the tool completion
 	riker, err := agents.GetRiker()
@@ -139,19 +143,23 @@ func main() {
 				fmt.Println(result)
 			}
 
-			bob.Params.Messages = append(bob.Params.Messages,
+			bob.Params.Messages = []openai.ChatCompletionMessageParamUnion{
+				bobSystemInstructions,
 				openai.SystemMessage(strings.Join(results, " ")),
 				openai.SystemMessage("use the above result of the tool calls to answer the user question: "),
 				openai.UserMessage(data["message"]),
-			)
+			}
 
 			riker.Params.Messages = []openai.ChatCompletionMessageParamUnion{}
 
 		} else {
 			fmt.Println("📝 user message:", data["message"])
-			bob.Params.Messages = append(bob.Params.Messages,
+
+			bob.Params.Messages = []openai.ChatCompletionMessageParamUnion{
+				bobSystemInstructions,
 				openai.UserMessage(data["message"]),
-			)
+			}
+
 			fmt.Println("📝 number of messages:", len(bob.Params.Messages))
 		}
 

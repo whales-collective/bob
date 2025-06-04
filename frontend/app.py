@@ -1,12 +1,15 @@
 import streamlit as st
 import requests
 import os
-import re
 from datetime import datetime
 
 PAGE_TITLE = os.environ.get('PAGE_TITLE', 'Web Chat Bot demo')
-PAGE_HEADER = os.environ.get('PAGE_HEADER', 'Made with Streamlit and Parakeet')
+PAGE_HEADER = os.environ.get('PAGE_HEADER', 'Made with Streamlit and LangChainJS')
+
 PAGE_ICON = os.environ.get('PAGE_ICON', '🚀')
+
+LLM_CHAT= os.environ.get('MODEL_RUNNER_CHAT_MODEL', '')
+LLM_EMBEDDINGS= os.environ.get('MODEL_RUNNER_EMBEDDING_MODEL', '')
 
 # Configuration of the Streamlit page
 st.set_page_config(page_title=PAGE_TITLE, page_icon=PAGE_ICON)
@@ -17,24 +20,9 @@ st.markdown("""
     .stDeployButton {
         visibility: hidden;
     }
-    .step-separator {
-        border: none;
-        border-top: 2px solid #4CAF50;
-        margin: 10px 0;
-    }
-    .thinking-box {
-        background-color: #f0f2f6;
-        padding: 10px;
-        border-radius: 5px;
-        border-left: 4px solid #4CAF50;
-        margin: 10px 0;
-    }
-    .step-indicator {
-        background-color: #e8f4fd;
-        padding: 8px;
-        border-radius: 3px;
-        border-left: 3px solid #2196F3;
-        margin: 5px 0;
+    /* Ensure fonts render correctly for monospace content */
+    code, pre {
+        font-family: 'Courier New', Courier, monospace;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -47,102 +35,20 @@ if "messages" not in st.session_state:
 if "input_key" not in st.session_state:
     st.session_state.input_key = 0
 
-# Backend URL
+# Initialize session ID in session state
+if "session_id" not in st.session_state:
+    st.session_state.session_id = "default"
+
+
+# Backend URL (the nodejs server)
 BACKEND_SERVICE_URL = os.environ.get('BACKEND_SERVICE_URL', 'http://backend:5050')
 
-def parse_and_render_content(content):
-    """Parse content and render HTML elements appropriately"""
-    
-    # Liste des patterns HTML à supporter
-    html_patterns = [
-        # Séparateurs horizontaux
-        (r'<hr>', '<hr class="step-separator">'),
-        (r'<hr/>', '<hr class="step-separator">'),
-        (r'<hr />', '<hr class="step-separator">'),
-        
-        # Messages de réflexion avec style spécial
-        (r'<hr>🤖 ([^<]+)<hr>', r'<div class="thinking-box">🤖 \1</div>'),
-        (r'🤖 ([^<\n]+)', r'<div class="thinking-box">🤖 \1</div>'),
-        
-        # Étapes avec numérotation
-        (r'<step>([^<]+)</step>', r'<div class="step-indicator">📋 \1</div>'),
-        (r'<info>([^<]+)</info>', r'<div class="step-indicator">ℹ️ \1</div>'),
-        (r'<warning>([^<]+)</warning>', r'<div style="background-color: #fff3cd; padding: 8px; border-radius: 3px; border-left: 3px solid #ffc107; margin: 5px 0;">⚠️ \1</div>'),
-        (r'<error>([^<]+)</error>', r'<div style="background-color: #f8d7da; padding: 8px; border-radius: 3px; border-left: 3px solid #dc3545; margin: 5px 0;">❌ \1</div>'),
-        (r'<success>([^<]+)</success>', r'<div style="background-color: #d4edda; padding: 8px; border-radius: 3px; border-left: 3px solid #28a745; margin: 5px 0;">✅ \1</div>'),
-        
-        # Formatting basique
-        (r'\*\*([^*]+)\*\*', r'<strong>\1</strong>'),
-        (r'\*([^*]+)\*', r'<em>\1</em>'),
-    ]
-    
-    # Séparer le contenu en parties HTML et non-HTML
-    parts = []
-    current_pos = 0
-    
-    # Chercher les balises HTML simples
-    html_regex = r'<(hr|step|info|warning|error|success)[^>]*>.*?</?\1>?|<hr\s*/?>'
-    
-    for match in re.finditer(html_regex, content, re.IGNORECASE | re.DOTALL):
-        # Ajouter le texte avant la balise HTML
-        if match.start() > current_pos:
-            text_part = content[current_pos:match.start()]
-            if text_part.strip():
-                parts.append(('text', text_part))
-        
-        # Ajouter la partie HTML
-        html_part = match.group()
-        parts.append(('html', html_part))
-        current_pos = match.end()
-    
-    # Ajouter le reste du texte
-    if current_pos < len(content):
-        remaining_text = content[current_pos:]
-        if remaining_text.strip():
-            parts.append(('text', remaining_text))
-    
-    # Si aucune balise HTML trouvée, traiter tout comme du texte
-    if not parts:
-        parts = [('text', content)]
-    
-    return parts
-
-def render_mixed_content(content):
-    """Render content with mixed text and HTML"""
-    parts = parse_and_render_content(content)
-    
-    for part_type, part_content in parts:
-        if part_type == 'html':
-            # Appliquer les transformations HTML
-            processed_html = part_content
-            html_patterns = [
-                (r'<hr>', '<hr class="step-separator">'),
-                (r'<hr/>', '<hr class="step-separator">'),
-                (r'<hr />', '<hr class="step-separator">'),
-                (r'<hr>🤖 ([^<]+)<hr>', r'<div class="thinking-box">🤖 \1</div>'),
-                (r'<step>([^<]+)</step>', r'<div class="step-indicator">📋 \1</div>'),
-                (r'<info>([^<]+)</info>', r'<div class="step-indicator">ℹ️ \1</div>'),
-                (r'<warning>([^<]+)</warning>', r'<div style="background-color: #fff3cd; padding: 8px; border-radius: 3px; border-left: 3px solid #ffc107; margin: 5px 0;">⚠️ \1</div>'),
-                (r'<error>([^<]+)</error>', r'<div style="background-color: #f8d7da; padding: 8px; border-radius: 3px; border-left: 3px solid #dc3545; margin: 5px 0;">❌ \1</div>'),
-                (r'<success>([^<]+)</success>', r'<div style="background-color: #d4edda; padding: 8px; border-radius: 3px; border-left: 3px solid #28a745; margin: 5px 0;">✅ \1</div>'),
-            ]
-            
-            for pattern, replacement in html_patterns:
-                processed_html = re.sub(pattern, replacement, processed_html, flags=re.IGNORECASE)
-            
-            # Afficher le HTML
-            st.markdown(processed_html, unsafe_allow_html=True)
-        else:
-            # Afficher le texte normal avec markdown
-            if part_content.strip():
-                st.markdown(part_content)
-
-def stream_response(message):
+def stream_response(message, session_id):
     """Stream the message response from the backend"""
     try:
         with requests.post(
             BACKEND_SERVICE_URL+"/chat",
-            json={"message": message},
+            json={"message": message, "sessionId": session_id},
             headers={"Content-Type": "application/json"},
             stream=True
         ) as response:
@@ -151,14 +57,26 @@ def stream_response(message):
             full_response = ""
             
             # Stream the response chunks
-            for chunk in response.iter_content(chunk_size=1024, decode_unicode=True):
+            for chunk in response.iter_content(chunk_size=1024):
                 if chunk:
-                    chunk_text = chunk.decode('utf-8') if isinstance(chunk, bytes) else chunk
-                    full_response += chunk_text
-                    
-                    # Update the placeholder with the accumulated response using mixed content rendering
-                    with response_placeholder.container():
-                        render_mixed_content(full_response)
+                    try:
+                        # Decode using utf-8 with error handling
+                        chunk_text = chunk.decode('utf-8', errors='replace')
+                        full_response += chunk_text
+                        
+                        # For content that might contain tree-view or other special characters
+                        if "```" in full_response:
+                            # Process code blocks to ensure tree structures are formatted as raw
+                            formatted_response = process_code_blocks(full_response)
+                            response_placeholder.markdown(formatted_response)
+                        else:
+                            response_placeholder.markdown(full_response)
+                    except UnicodeDecodeError:
+                        # If there's still a decode error, replace problematic characters
+                        st.warning("Encountered encoding issues with response")
+                        chunk_text = chunk.decode('utf-8', errors='replace')
+                        full_response += chunk_text
+                        response_placeholder.markdown(full_response)
             
             return full_response
     except requests.exceptions.RequestException as e:
@@ -166,21 +84,82 @@ def stream_response(message):
         st.error(error_msg)
         return error_msg
 
+def process_code_blocks(text):
+    """Process code blocks to properly display tree-view and other special characters"""
+    # Split by code block markers
+    parts = text.split("```")
+    
+    result = []
+    for i, part in enumerate(parts):
+        if i % 2 == 0:  # This is regular text
+            result.append(part)
+        else:  # This is code
+            # Get the language identifier if present
+            lines = part.strip().split('\n', 1)
+            lang = lines[0].strip() if len(lines) > 1 else ""
+            code_content = lines[1] if len(lines) > 1 else lines[0]
+            
+            # Check if it's a tree structure (simple heuristic)
+            if any(char in code_content for char in ['│', '├', '└', '─', '┬', '┤']):
+                # For tree structures, use raw formatting
+                if lang != "raw":
+                    result.append(f"```raw\n{code_content}\n```")
+                else:
+                    result.append(f"```{lang}\n{code_content}\n```")
+            else:
+                # Regular code, keep the original format
+                result.append(f"```{part}```")
+    
+    return "".join(result)
+
+def clear_conversation_history(session_id):
+    """Clear the conversation history on the server"""
+    try:
+        response = requests.post(
+            f"{BACKEND_SERVICE_URL}/clear-history",
+            json={"sessionId": session_id},
+            headers={"Content-Type": "application/json"}
+        )
+        if response.status_code == 200:
+            st.session_state.messages = []  # Clear local messages too
+            st.success("✨ Conversation history cleared!")
+        else:
+            st.error("Failed to clear conversation history")
+    except requests.exceptions.RequestException as e:
+        st.error(f"Error clearing history: {str(e)}")
+
+
 def increment_input_key():
     """Increment the input key to reset the input field"""
     st.session_state.input_key += 1
 
 # Page title
+st.title(PAGE_TITLE)
 st.header(PAGE_HEADER)
+
+# Session ID input
+session_id = st.text_input(
+    "🔑 Session ID:",
+    value=st.session_state.session_id,
+    help="Enter a unique session ID to maintain conversation context"
+)
+st.session_state.session_id = session_id
 
 # Form to send a message
 with st.form(key=f"message_form_{st.session_state.input_key}"):
-    message = st.text_area("📝 Your message:", key=f"input_{st.session_state.input_key}", height=150)
-    col1, col2, col3, col4, col5, col6 = st.columns(6)
+    message = st.text_area(f"📝 Your message: [📕 {LLM_CHAT} 🌐 {LLM_EMBEDDINGS}]", key=f"input_{st.session_state.input_key}", height=150)
+    col1, col2, col3 = st.columns([1, 1, 3])
     with col1:
         submit_button = st.form_submit_button(label="Send...")
-    with col6:
+    with col2:
         cancel_button = st.form_submit_button(label="Cancel", type="secondary")
+    with col3:
+        clear_button = st.form_submit_button("Clear History 🗑️")
+
+# Handle the clear history button
+if clear_button:
+    clear_conversation_history(st.session_state.session_id)
+    st.rerun()
 
 # Handle the message submission
 if submit_button and message and len(message.strip()) > 0:
@@ -188,17 +167,19 @@ if submit_button and message and len(message.strip()) > 0:
     st.session_state.messages.append({
         "role": "user",
         "content": message,
-        "time": datetime.now()
+        "time": datetime.now(),
+        "session_id": st.session_state.session_id
     })
     
     # Stream the response from the backend
-    response = stream_response(message)
+    response = stream_response(message, st.session_state.session_id)
     
     # Add the response to the history
     st.session_state.messages.append({
         "role": "assistant",
         "content": response,
-        "time": datetime.now()
+        "time": datetime.now(),
+        "session_id": st.session_state.session_id
     })
     
     # Reset the input field
@@ -221,10 +202,13 @@ st.write("### Messages history")
 for msg in reversed(st.session_state.messages):
     with st.container():
         if msg["role"] == "user":
-            st.info(f"🤓 You ({msg['time'].strftime('%H:%M')})")
+            st.info(f"🤓 You ({msg['time'].strftime('%H:%M')}) - Session: {msg['session_id']}")
             st.write(msg["content"])
         else:
-            st.success(f"🤖 Assistant ({msg['time'].strftime('%H:%M')})")
-            # Utiliser le rendu mixte pour l'historique aussi
-            render_mixed_content(msg["content"])
-            
+            st.success(f"🤖 Assistant ({msg['time'].strftime('%H:%M')}) - Session: {msg['session_id']}")
+            # Process the message content to handle special formatting
+            if "```" in msg["content"]:
+                formatted_content = process_code_blocks(msg["content"])
+                st.markdown(formatted_content)
+            else:
+                st.markdown(msg["content"])

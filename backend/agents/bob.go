@@ -25,12 +25,7 @@ func GetBob() (*robby.Agent, error) {
 		robby.WithParams(
 			openai.ChatCompletionNewParams{
 				Model: model,
-				Messages: []openai.ChatCompletionMessageParamUnion{
-					openai.SystemMessage(`
-					Your name is Bob, 
-					You are a the original Bob
-					`),
-				},
+				Messages: []openai.ChatCompletionMessageParamUnion{},
 				Temperature: openai.Opt(0.9),
 			},
 		),
