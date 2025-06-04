@@ -175,14 +175,22 @@ st.session_state.session_id = session_id
 with st.form(key=f"message_form_{st.session_state.input_key}"):
     message = st.text_area("📝 Your message:", key=f"input_{st.session_state.input_key}", height=150)
     
+    # Créer d'abord le bouton principal (Send) pour les raccourcis clavier
+    submit_button = st.form_submit_button(label="Send...", type="primary")
+    
+    # Puis créer le bouton secondaire
+    cancel_button = st.form_submit_button(label="Cancel", type="secondary")
+
     # Utilisation de colonnes pour pousser les boutons à droite
     col1, col2, col3 = st.columns([15, 3, 3])
     with col1:
         st.empty()  # Colonne vide pour pousser les boutons à droite        
-    with col2:
-        cancel_button = st.form_submit_button(label="Cancel", type="secondary")
     with col3:
+        # Créer le bouton Send en PREMIER pour qu'il soit le bouton par défaut
         submit_button = st.form_submit_button(label="Send...")
+    with col2:
+        # Créer le bouton Cancel en SECOND
+        cancel_button = st.form_submit_button(label="Cancel", type="secondary")
         
 
 # Handle the message submission
