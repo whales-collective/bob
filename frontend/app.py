@@ -12,7 +12,7 @@ LLM_CHAT= os.environ.get('MODEL_RUNNER_CHAT_MODEL', '')
 LLM_EMBEDDINGS= os.environ.get('MODEL_RUNNER_EMBEDDING_MODEL', '')
 
 # Configuration of the Streamlit page
-st.set_page_config(page_title=PAGE_TITLE, page_icon=PAGE_ICON)
+#st.set_page_config(page_title=PAGE_TITLE, page_icon=PAGE_ICON)
 
 # Hide the Deploy button
 st.markdown("""
@@ -145,9 +145,11 @@ session_id = st.text_input(
 )
 st.session_state.session_id = session_id
 
+models_info = st.text_input("Models", value=f"📕 {LLM_CHAT} - 🌐 {LLM_EMBEDDINGS}")
+
 # Form to send a message
 with st.form(key=f"message_form_{st.session_state.input_key}"):
-    message = st.text_area(f"📝 Your message: [📕 {LLM_CHAT} 🌐 {LLM_EMBEDDINGS}]", key=f"input_{st.session_state.input_key}", height=150)
+    message = st.text_area("📝 Your message:", key=f"input_{st.session_state.input_key}", height=150)
     col1, col2, col3 = st.columns([1, 1, 3])
     with col1:
         submit_button = st.form_submit_button(label="Send...")
