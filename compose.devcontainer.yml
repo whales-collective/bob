@@ -7,13 +7,20 @@ services:
       dockerfile: Dockerfile
     environment:
       - DMR_BASE_URL=${DMR_BASE_URL}
-      - MODEL_RUNNER_CHAT_MODEL=${MODEL_RUNNER_CHAT_MODEL}
+      - MODEL_RUNNER_CHAT_MODEL_BOB=${MODEL_RUNNER_CHAT_MODEL_BOB}
+      - MODEL_RUNNER_CHAT_MODEL_MILO=${MODEL_RUNNER_CHAT_MODEL_MILO}
+      - MODEL_RUNNER_CHAT_MODEL_BILL=${MODEL_RUNNER_CHAT_MODEL_BILL}
+      - MODEL_RUNNER_CHAT_MODEL_GARFIELD=${MODEL_RUNNER_CHAT_MODEL_GARFIELD}
       - MODEL_RUNNER_TOOLS_MODEL=${MODEL_RUNNER_TOOLS_MODEL}
       - MODEL_RUNNER_EMBEDDING_MODEL=${MODEL_RUNNER_EMBEDDING_MODEL}
+      
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
-      - download-chat-model
+      - download-chat-model-bob
+      - download-chat-model-milo
+      - download-chat-model-bill
+      - download-chat-model-garfield
       - download-embedding-model
       - download-tools-model
     develop:
@@ -34,7 +41,10 @@ services:
       - PAGE_HEADER=🐳 Docker Model Runner Demo
       - PAGE_ICON=🤖
       - DMR_BASE_URL=${DMR_BASE_URL}
-      - MODEL_RUNNER_CHAT_MODEL=${MODEL_RUNNER_CHAT_MODEL}
+      - MODEL_RUNNER_CHAT_MODEL_BOB=${MODEL_RUNNER_CHAT_MODEL_BOB}
+      - MODEL_RUNNER_CHAT_MODEL_MILO=${MODEL_RUNNER_CHAT_MODEL_MILO}
+      - MODEL_RUNNER_CHAT_MODEL_BILL=${MODEL_RUNNER_CHAT_MODEL_BILL}
+      - MODEL_RUNNER_CHAT_MODEL_GARFIELD=${MODEL_RUNNER_CHAT_MODEL_GARFIELD}
       - MODEL_RUNNER_TOOLS_MODEL=${MODEL_RUNNER_TOOLS_MODEL}
       - MODEL_RUNNER_EMBEDDING_MODEL=${MODEL_RUNNER_EMBEDDING_MODEL}
     depends_on:
@@ -45,15 +55,46 @@ services:
           path: ./frontend/app.py
 
 
-  download-chat-model:
+  download-chat-model-bob:
     image: curlimages/curl:8.12.1
     entrypoint: |
       sh -c '
       # Download Chat model
       curl -s "${DMR_BASE_URL}/models/create" -d @- << EOF
-      {"from": "${MODEL_RUNNER_CHAT_MODEL}"}
+      {"from": "${MODEL_RUNNER_CHAT_MODEL_BOB}"}
       EOF
       '
+
+  download-chat-model-milo:
+    image: curlimages/curl:8.12.1
+    entrypoint: |
+      sh -c '
+      # Download Chat model
+      curl -s "${DMR_BASE_URL}/models/create" -d @- << EOF
+      {"from": "${MODEL_RUNNER_CHAT_MODEL_MILO}"}
+      EOF
+      '
+
+  download-chat-model-bill:
+    image: curlimages/curl:8.12.1
+    entrypoint: |
+      sh -c '
+      # Download Chat model
+      curl -s "${DMR_BASE_URL}/models/create" -d @- << EOF
+      {"from": "${MODEL_RUNNER_CHAT_MODEL_BILL}"}
+      EOF
+      '
+
+  download-chat-model-garfield:
+    image: curlimages/curl:8.12.1
+    entrypoint: |
+      sh -c '
+      # Download Chat model
+      curl -s "${DMR_BASE_URL}/models/create" -d @- << EOF
+      {"from": "${MODEL_RUNNER_CHAT_MODEL_GARFIELD}"}
+      EOF
+      '
+
 
   download-embedding-model:
     image: curlimages/curl:8.12.1

@@ -1,6 +1,7 @@
 import streamlit as st
 import requests
 import os
+import re
 from datetime import datetime
 
 #PAGE_TITLE = os.environ.get('PAGE_TITLE', 'Web Chat Bot demo')
@@ -8,7 +9,7 @@ PAGE_HEADER = os.environ.get('PAGE_HEADER', 'Made with Streamlit and LangChainJS
 
 PAGE_ICON = os.environ.get('PAGE_ICON', '🚀')
 
-LLM_CHAT= os.environ.get('MODEL_RUNNER_CHAT_MODEL', '')
+LLM_CHAT= os.environ.get('MODEL_RUNNER_CHAT_MODEL_BOB', '')
 LLM_EMBEDDINGS= os.environ.get('MODEL_RUNNER_EMBEDDING_MODEL', '')
 
 # Configuration of the Streamlit page
@@ -49,6 +50,53 @@ st.markdown("""
     .stForm > div:last-child > div {
         flex: none !important;
     }
+    
+    /* GitHub-style labels */
+    .github-label {
+        display: inline-block;
+        padding: 2px 6px;
+        margin: 2px;
+        border-radius: 12px;
+        font-size: 12px;
+        font-weight: 500;
+        color: white;
+        text-decoration: none;
+        white-space: nowrap;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    }
+    
+    /* Predefined label colors (GitHub-inspired) */
+    .label-red { background-color: #d73a49; }
+    .label-green { background-color: #28a745; }
+    .label-blue { background-color: #0366d6; }
+    .label-yellow { background-color: #ffd33d; color: #24292e; }
+    .label-orange { background-color: #f66a0a; }
+    .label-purple { background-color: #6f42c1; }
+    .label-pink { background-color: #ea4aaa; }
+    .label-gray { background-color: #6a737d; }
+    .label-grey { background-color: #6a737d; }
+    .label-black { background-color: #24292e; }
+    .label-white { background-color: #f6f8fa; color: #24292e; border: 1px solid #d1d5da; }
+    
+    /* Status-specific colors */
+    .label-success { background-color: #28a745; }
+    .label-error { background-color: #d73a49; }
+    .label-warning { background-color: #ffd33d; color: #24292e; }
+    .label-info { background-color: #0366d6; }
+    .label-step { background-color: #6f42c1; }
+    
+    /* Additional semantic colors */
+    .label-bug { background-color: #d73a49; }
+    .label-feature { background-color: #a2eeef; color: #24292e; }
+    .label-documentation { background-color: #0075ca; }
+    .label-enhancement { background-color: #a2eeef; color: #24292e; }
+    .label-question { background-color: #d876e3; }
+    .label-wontfix { background-color: #ffffff; color: #24292e; border: 1px solid #d1d5da; }
+    .label-duplicate { background-color: #cfd3d7; color: #24292e; }
+    .label-invalid { background-color: #e4e669; color: #24292e; }
+    
+    /* Default fallback */
+    .label-default { background-color: #586069; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -67,6 +115,23 @@ if "session_id" not in st.session_state:
 
 # Backend URL (the nodejs server)
 BACKEND_SERVICE_URL = os.environ.get('BACKEND_SERVICE_URL', 'http://backend:5050')
+
+def convert_tags_to_labels(text):
+    """Convert HTML-like tags to GitHub-style labels"""
+    # Pattern to match tags like <red>content</red>, <step>content</step>, etc.
+    pattern = r'<(\w+)>(.*?)</\1>'
+    
+    def replace_tag(match):
+        tag_name = match.group(1).lower()
+        content = match.group(2)
+        
+        # Create a GitHub-style label
+        label_class = f"label-{tag_name}"
+        return f'<span class="github-label {label_class}">{content}</span>'
+    
+    # Replace all matching tags
+    result = re.sub(pattern, replace_tag, text)
+    return result
 
 def stream_response(message, session_id):
     """Stream the message response from the backend"""
@@ -89,19 +154,23 @@ def stream_response(message, session_id):
                         chunk_text = chunk.decode('utf-8', errors='replace')
                         full_response += chunk_text
                         
+                        # Convert tags to labels and process content
+                        processed_response = convert_tags_to_labels(full_response)
+                        
                         # For content that might contain tree-view or other special characters
-                        if "```" in full_response:
+                        if "```" in processed_response:
                             # Process code blocks to ensure tree structures are formatted as raw
-                            formatted_response = process_code_blocks(full_response)
-                            response_placeholder.markdown(formatted_response)
+                            formatted_response = process_code_blocks(processed_response)
+                            response_placeholder.markdown(formatted_response, unsafe_allow_html=True)
                         else:
-                            response_placeholder.markdown(full_response)
+                            response_placeholder.markdown(processed_response, unsafe_allow_html=True)
                     except UnicodeDecodeError:
                         # If there's still a decode error, replace problematic characters
                         st.warning("Encountered encoding issues with response")
                         chunk_text = chunk.decode('utf-8', errors='replace')
                         full_response += chunk_text
-                        response_placeholder.markdown(full_response)
+                        processed_response = convert_tags_to_labels(full_response)
+                        response_placeholder.markdown(processed_response, unsafe_allow_html=True)
             
             return full_response
     except requests.exceptions.RequestException as e:
@@ -233,9 +302,11 @@ for msg in reversed(st.session_state.messages):
             st.write(msg["content"])
         else:
             st.success(f"🤖 Assistant ({msg['time'].strftime('%H:%M')}) - Session: {msg['session_id']}")
-            # Process the message content to handle special formatting
-            if "```" in msg["content"]:
-                formatted_content = process_code_blocks(msg["content"])
-                st.markdown(formatted_content)
+            # Process the message content to handle special formatting and labels
+            processed_content = convert_tags_to_labels(msg["content"])
+            
+            if "```" in processed_content:
+                formatted_content = process_code_blocks(processed_content)
+                st.markdown(formatted_content, unsafe_allow_html=True)
             else:
-                st.markdown(msg["content"])
+                st.markdown(processed_content, unsafe_allow_html=True)

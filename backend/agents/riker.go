@@ -15,7 +15,7 @@ func GetRiker() (*robby.Agent, error) {
 	modelForTools := os.Getenv("MODEL_RUNNER_TOOLS_MODEL")
 
 	fmt.Println("🌍", modelRunnerURL)
-	fmt.Println("📗 tool model:", modelForTools)
+	fmt.Println("📗 Riker, tool model:", modelForTools)
 
 	riker, err := robby.NewAgent(
 		robby.WithDMRClient(

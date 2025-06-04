@@ -11,15 +11,15 @@ import (
 
 
 
-func GetBob() (*robby.Agent, error) {
+func GetMilo() (*robby.Agent, error) {
 	// TODO: handle error
 	modelRunnerURL := os.Getenv("DMR_BASE_URL") + "/engines/llama.cpp/v1"
-	model := os.Getenv("MODEL_RUNNER_CHAT_MODEL_BOB")
+	model := os.Getenv("MODEL_RUNNER_CHAT_MODEL_MILO")
 
 	fmt.Println("🌍", modelRunnerURL)
-	fmt.Println("📕 Bob, chat model:", model)
+	fmt.Println("📕 Milo, chat model:", model)
 
-	bob, err := robby.NewAgent(
+	milo, err := robby.NewAgent(
 		robby.WithDMRClient(
 			context.Background(),
 			modelRunnerURL,
@@ -35,6 +35,6 @@ func GetBob() (*robby.Agent, error) {
 	if err != nil {
 		return nil, err
 	}
-	return bob, nil
+	return milo, nil
 
 }
