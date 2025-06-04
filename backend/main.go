@@ -1,7 +1,7 @@
 package main
 
 import (
-	"context"
+	"we-are-legion/agents"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -25,99 +25,28 @@ func GetBytesBody(request *http.Request) []byte {
 	return body
 }
 
-func GetBobToolsCatalog() []openai.ChatCompletionToolParam {
-	addTool := openai.ChatCompletionToolParam{
-		Function: openai.FunctionDefinitionParam{
-			Name:        "add",
-			Description: openai.String("add two numbers"),
-			Parameters: openai.FunctionParameters{
-				"type": "object",
-				"properties": map[string]interface{}{
-					"a": map[string]string{
-						"type":        "number",
-						"description": "The first number to add.",
-					},
-					"b": map[string]string{
-						"type":        "number",
-						"description": "The second number to add.",
-					},
-				},
-				"required": []string{"a", "b"},
-			},
-		},
-	}
-
-	chooseCloneOfBobTool := openai.ChatCompletionToolParam{
-		Function: openai.FunctionDefinitionParam{
-			Name:        "choose_clone_of_bob",
-			Description: openai.String("choose a clone of Bob by saying I want to speak to <clone_name>"),
-			Parameters: openai.FunctionParameters{
-				"type": "object",
-				"properties": map[string]interface{}{
-					"clone_name": map[string]string{
-						"type":        "string",
-						"description": "The name of the clone of Bob to choose.",
-					},
-				},
-				"required": []string{"clone_name"},
-			},
-		},
-	}
-
-
-	tools := []openai.ChatCompletionToolParam{addTool, chooseCloneOfBobTool}
-	return tools
-}
-
 func main() {
 
-	modelRunnerURL := os.Getenv("DMR_BASE_URL") + "/engines/llama.cpp/v1"
-	model := os.Getenv("MODEL_RUNNER_CHAT_MODEL")
-	modelForTools := os.Getenv("MODEL_RUNNER_TOOLS_MODEL")
-
-	bob, _ := robby.NewAgent(
-		robby.WithDMRClient(
-			context.Background(),
-			modelRunnerURL,
-		),
-		robby.WithParams(
-			openai.ChatCompletionNewParams{
-				Model: model,
-				Messages: []openai.ChatCompletionMessageParamUnion{
-					openai.SystemMessage("Your name is Bob, You are a the original Bob"),
-				},
-				Temperature: openai.Opt(0.9),
-			},
-		),
-	)
+	bob, err := agents.GetBob()
+	if err != nil {
+		log.Fatal("😡 Error creating Bob agent: ", err)
+	}
 
 	// NOTE: we need a separate agent for the tool completion
-
-	riker, _ := robby.NewAgent(
-		robby.WithDMRClient(
-			context.Background(),
-			modelRunnerURL,
-		),
-		robby.WithParams(
-			openai.ChatCompletionNewParams{
-				Model:             modelForTools,
-				Messages:          []openai.ChatCompletionMessageParamUnion{},
-				Temperature:       openai.Opt(0.0),
-				//ParallelToolCalls: openai.Bool(true),
-			},
-		),
-		robby.WithTools(GetBobToolsCatalog()),
-	)
+	riker, err := agents.GetRiker()
+	if err != nil {
+		log.Fatal("😡 Error creating Riker agent: ", err)
+	}
 
 	var httpPort = os.Getenv("HTTP_PORT")
 	if httpPort == "" {
 		httpPort = "5050"
 	}
 
-	fmt.Println("🌍", modelRunnerURL, "📕", model)
-
 	mux := http.NewServeMux()
 	shouldIStopTheCompletion := false
+
+	// Exemple de modifications dans le handler /chat de main.go
 
 	mux.HandleFunc("POST /chat", func(response http.ResponseWriter, request *http.Request) {
 		// add a flusher
@@ -135,24 +64,35 @@ func main() {
 		}
 		fmt.Println("🤖 Bob is ready to chat!", data)
 
+		// Étape 1: Analyse du message
+		response.Write([]byte("<step>Analysing your message...</step>"))
+		flusher.Flush()
+
 		riker.Params.Messages = []openai.ChatCompletionMessageParamUnion{
 			openai.UserMessage(data["message"]),
 		}
 
+		// Étape 2: Vérification des outils
+		response.Write([]byte("<hr><info>Checking for tool calls...</info>"))
+		flusher.Flush()
+
 		// Always check the TOOLCALLS:
 		toolCalls, err := riker.ToolsCompletion()
 		if err != nil {
-			//response.Write([]byte("😡 Error: " + err.Error()))
 			if len(toolCalls) > 0 {
 				fmt.Println("😡 Error: ", err.Error())
+				response.Write([]byte("<error>Tool call error detected</error>"))
 			} else {
 				fmt.Println("🙂 no tool calls detected.")
+				response.Write([]byte("<success>No tool calls detected</success>"))
 			}
-			
+			flusher.Flush()
 		}
 		fmt.Println("✋ Number of Tool Calls:\n", len(toolCalls))
 
 		if len(toolCalls) > 0 {
+			response.Write([]byte("<step>Executing tool calls...</step>"))
+			flusher.Flush()
 
 			toolCallsJSON, _ := riker.ToolCallsToJSON()
 			fmt.Println("✋ Tool Calls:\n", toolCallsJSON)
@@ -161,16 +101,22 @@ func main() {
 			// And add the result to the message list of the Agent.
 			results, err := riker.ExecuteToolCalls(map[string]func(any) (any, error){
 				"add": func(args any) (any, error) {
+					response.Write([]byte("<info>Performing addition...</info>"))
+					flusher.Flush()
 					a := args.(map[string]any)["a"].(float64)
 					b := args.(map[string]any)["b"].(float64)
 					return a + b, nil
 				},
 				"choose_clone_of_bob": func(args any) (any, error) {
+					response.Write([]byte("<info>Selecting Bob clone...</info>"))
+					flusher.Flush()
 					cloneName := args.(map[string]any)["clone_name"].(string)
-					if cloneName == "Riker" {
-						return "Riker is a clone of Bob", nil
+					if cloneName == "Bill" {
+						return "Bill is a clone of Bob", nil
 					} else if cloneName == "Milo" {
 						return "Milo is a clone of Bob", nil
+					} else if cloneName == "Garfield" {
+						return "Garfield is a clone of Bob", nil
 					} else {
 						return fmt.Sprintf("Unknown clone of Bob: %s", cloneName), nil
 					}
@@ -178,7 +124,11 @@ func main() {
 			})
 
 			if err != nil {
-				response.Write([]byte("😡 Error: " + err.Error()))
+				response.Write([]byte("<error>Tool execution failed: " + err.Error() + "</error>"))
+				flusher.Flush()
+			} else {
+				response.Write([]byte("<success>Tool calls executed successfully</success>"))
+				flusher.Flush()
 			}
 
 			fmt.Println("")
@@ -203,10 +153,12 @@ func main() {
 				openai.UserMessage(data["message"]),
 			)
 			fmt.Println("📝 number of messages:", len(bob.Params.Messages))
-
-
 		}
-		response.Write([]byte("**🤖 Bob is thinking...**"))
+
+		// Étape finale: Génération de la réponse
+		response.Write([]byte("<hr><step>Generating response...</step><hr>"))
+		flusher.Flush()
+
 		bob.ChatCompletionStream(func(self *robby.Agent, content string, err error) error {
 			//fmt.Print(content)
 			response.Write([]byte(content))
@@ -217,17 +169,14 @@ func main() {
 			} else {
 				return errors.New("🚫 Cancelling request")
 			}
-			//return nil
 		})
-
-		/*
+	})
+	/*
 		if err != nil {
 			shouldIStopTheCompletion = false
 			response.Write([]byte("bye: " + err.Error()))
 		}
-		*/
-
-	})
+	*/
 
 	// Cancel/Stop the generation of the completion
 	mux.HandleFunc("DELETE /cancel", func(response http.ResponseWriter, request *http.Request) {

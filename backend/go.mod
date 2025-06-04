@@ -1,4 +1,4 @@
-module 82-web-chat-bot
+module we-are-legion
 
 go 1.24.0
 
