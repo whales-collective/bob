@@ -170,26 +170,21 @@ session_id = st.text_input(
 )
 st.session_state.session_id = session_id
 
+#models_info = st.text_input("Models", value=f"📕 {LLM_CHAT} - 🌐 {LLM_EMBEDDINGS}")
 
 # Form to send a message
 with st.form(key=f"message_form_{st.session_state.input_key}"):
-    message = st.text_area("📝 Your message:", key=f"input_{st.session_state.input_key}", height=150)
+    message = st.text_area("📝 Your message:", key=f"input_{st.session_state.input_key}", height=80)
     
-    # Créer d'abord le bouton principal (Send) pour les raccourcis clavier
-    submit_button = st.form_submit_button(label="Send...", type="primary")
-    
-    # Puis créer le bouton secondaire
-    cancel_button = st.form_submit_button(label="Cancel", type="secondary")
-
     # Utilisation de colonnes pour pousser les boutons à droite
-    col1, col2, col3 = st.columns([15, 3, 3])
+    col1, col2, col3, col4 = st.columns([10, 6, 3, 3])
     with col1:
-        st.empty()  # Colonne vide pour pousser les boutons à droite        
-    with col3:
-        # Créer le bouton Send en PREMIER pour qu'il soit le bouton par défaut
-        submit_button = st.form_submit_button(label="Send...")
+        st.empty()  # Colonne vide pour pousser les boutons à droite
     with col2:
-        # Créer le bouton Cancel en SECOND
+        st.empty()
+    with col3:
+        submit_button = st.form_submit_button(label="Send...")
+    with col4:
         cancel_button = st.form_submit_button(label="Cancel", type="secondary")
         
 
@@ -230,7 +225,7 @@ if cancel_button:
         st.error(f"Error cancelling request: {str(e)}")
 
 # Display the messages history
-st.write("### Messages history")
+#st.write("### Messages history")
 for msg in reversed(st.session_state.messages):
     with st.container():
         if msg["role"] == "user":
