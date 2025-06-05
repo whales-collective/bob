@@ -57,6 +57,10 @@ func main() {
 	if err != nil {
 		log.Fatal("😡 Error creating Riker agent: ", err)
 	}
+	khan, err := agents.GetKhan()
+	if err != nil {
+		log.Fatal("😡 Error creating Khan agent: ", err)
+	}
 
 	var httpPort = os.Getenv("HTTP_PORT")
 	if httpPort == "" {
@@ -87,7 +91,12 @@ func main() {
 		fmt.Println("🤖 Bob is ready to chat!", data)
 		userQuestion := data["message"]
 
+		// NOTE: Riker is the agent in charge of detecting if the user wants to change the current Agent,
 		riker.Params.Messages = []openai.ChatCompletionMessageParamUnion{
+			openai.UserMessage(userQuestion),
+		}
+
+		khan.Params.Messages = []openai.ChatCompletionMessageParamUnion{
 			openai.UserMessage(userQuestion),
 		}
 
@@ -109,13 +118,44 @@ func main() {
 		}
 		fmt.Println("🤖 Number of Tool Calls:\n", len(toolCalls))
 
+		// Always check the MCP TOOLCALLS:
+		mcpTooCalls, err := khan.ToolsCompletion()
+		if err != nil {
+			if len(mcpTooCalls) > 0 {
+				fmt.Println("😡 Error: ", err.Error())
+				helpers.ResponseLabel(response, flusher, "error", "MCP Tool call error detected: "+err.Error())
+			} else {
+				fmt.Println("🙂 no tool calls detected.")
+				helpers.ResponseLabel(response, flusher, "success", "No MCP tool calls detected")
+			}
+		}
+		fmt.Println("🤖 Number of MCP Tool Calls:\n", len(mcpTooCalls))
+
+		numberOfToolCalls := len(toolCalls)
+		numberOfMCPTooCalls := len(mcpTooCalls)
+
+		fmt.Println("🤖🤖🤖 TOOLCALLS:", numberOfToolCalls, "MCP_TOOLCALLS:", numberOfMCPTooCalls)
+		mcpToolCallsJSON, _ := khan.ToolCallsToJSON()
+		fmt.Println("🤖 MCP Tool Calls:\n", mcpToolCallsJSON)
+
+		var mcpResults []string
+		if numberOfMCPTooCalls > 0 {
+			helpers.ResponseLabel(response, flusher, "orange", "Executing MCP tool calls...")
+			// IMPORTANT: the job of Khan is only to detect if the user wants to use the MCP tools,
+			mcpResults, err = khan.ExecuteMCPToolCalls()
+			if err != nil {
+				helpers.ResponseLabel(response, flusher, "error", "MCP Tool execution failed: "+err.Error())
+			} else {
+				helpers.ResponseLabel(response, flusher, "success", "MCP Tool calls executed successfully")
+			}
+		}
+
 		// OPTION 1: if there are tool calls, execute them
-		if len(toolCalls) > 0 {
+		if numberOfToolCalls > 0 {
 			helpers.ResponseLabel(response, flusher, "orange", "Executing tool calls...")
 
 			toolCallsJSON, _ := riker.ToolCallsToJSON()
 			fmt.Println("🤖 Tool Calls:\n", toolCallsJSON)
-
 
 			// IMPORTANT: the job of Riker is only to detect if the user wants to change the current Agent,
 			// and to execute the tool calls.
@@ -123,14 +163,6 @@ func main() {
 			// And add the result to the message list of the Agent.
 			// BEGIN: execute the tool calls
 			results, err := riker.ExecuteToolCalls(map[string]func(any) (any, error){
-				// TODO: remove this tool
-				//"add": func(args any) (any, error) {
-				//	response.Write([]byte("<feature>Performing addition...</feature>"))
-				//	flusher.Flush()
-				//	a := args.(map[string]any)["a"].(float64)
-				//	b := args.(map[string]any)["b"].(float64)
-				//	return a + b, nil
-				//},
 
 				"choose_clone_of_bob": func(args any) (any, error) {
 
@@ -233,37 +265,50 @@ func main() {
 			riker.Params.Messages = []openai.ChatCompletionMessageParamUnion{}
 
 		} else {
-			// OPTION 2: if there are no tool calls, just continue the conversation
+			// OPTION 3: if there are no tool calls, just continue the conversation
 			fmt.Println("🤖 No tool calls detected, continuing the conversation...")
 			fmt.Println("📝 user message:", userQuestion)
 		}
 
-		// STEP 2: SIMILARITY SEARCH:
-		similarities, err := currentSelection.Agent.RAGMemorySearchSimilaritiesWithText(userQuestion, 0.7)
-		if err != nil {
-			fmt.Println("Error when searching for similarities:", err)
-			// NOTE: do nothing, just continue the conversation
-		}
-		fmt.Println("🎉 Similarities found:", len(similarities))
-		for _, similarity := range similarities {
-			fmt.Println("-", similarity)
-		}
-
-		if len(similarities) > 0 {
-			// NOTE: conversational memory, add the similarities to the Agent's message
+		if numberOfMCPTooCalls > 0 && len(mcpResults) > 0 {
+			// NOTE: conversational memory, add the MCP results to the Agent's message
 			currentSelection.Agent.Params.Messages = append(
 				currentSelection.Agent.Params.Messages,
-				openai.SystemMessage(
-					"Here are some relevant documents found in the RAG memory:\n"+strings.Join(similarities, "\n"),
-				),
+				openai.SystemMessage("Here are some relevant documents found in the MCP memory:\n"+strings.Join(mcpResults, "\n")),
 				openai.SystemMessage("Use the above documents to answer the user question: "),
 				openai.UserMessage(userQuestion),
 			)
-		} else {
-			// NOTE: conversational memory, add the question to the Agent's message
-			currentSelection.Agent.Params.Messages = append(
-				currentSelection.Agent.Params.Messages, openai.UserMessage(userQuestion),
-			)
+		} else { // NOTE: make similarity search
+			// BEGIN: similarity search
+			// =============================================
+			// STEP 2: SIMILARITY SEARCH:
+			// =============================================
+			similarities, err := currentSelection.Agent.RAGMemorySearchSimilaritiesWithText(userQuestion, 0.7)
+			if err != nil {
+				fmt.Println("Error when searching for similarities:", err)
+				// NOTE: do nothing, just continue the conversation
+			}
+			fmt.Println("🎉 Similarities found:", len(similarities))
+			//for _, similarity := range similarities {
+			//	fmt.Println("-", similarity)
+			//}
+			if len(similarities) > 0 {
+				// NOTE: conversational memory, add the similarities to the Agent's message
+				currentSelection.Agent.Params.Messages = append(
+					currentSelection.Agent.Params.Messages,
+					openai.SystemMessage(
+						"Here are some relevant documents found in the RAG memory:\n"+strings.Join(similarities, "\n"),
+					),
+					openai.SystemMessage("Use the above documents to answer the user question: "),
+					openai.UserMessage(userQuestion),
+				)
+			} else {
+				// NOTE: conversational memory, add the question to the Agent's message
+				currentSelection.Agent.Params.Messages = append(
+					currentSelection.Agent.Params.Messages, openai.UserMessage(userQuestion),
+				)
+			}
+			// END: similarity search
 		}
 
 		fmt.Println("🤖 number of messages in memory:", len(currentSelection.Agent.Params.Messages))

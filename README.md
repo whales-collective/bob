@@ -1,5 +1,9 @@
 # Bob
 
+## Tips
+
+To not execute the MCP tool calls, add "do not search on the web" to the prompt.
+
 
 ### First time - Initialize the Python environment
 
