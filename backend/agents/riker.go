@@ -45,6 +45,7 @@ func GetRiker() (*robby.Agent, error) {
 }
 
 func GetRikerToolsCatalog() []openai.ChatCompletionToolParam {
+	/*
 	addTool := openai.ChatCompletionToolParam{
 		Function: openai.FunctionDefinitionParam{
 			Name:        "add",
@@ -65,6 +66,7 @@ func GetRikerToolsCatalog() []openai.ChatCompletionToolParam {
 			},
 		},
 	}
+	*/
 
 	chooseCloneOfBobTool := openai.ChatCompletionToolParam{
 		Function: openai.FunctionDefinitionParam{
@@ -83,6 +85,23 @@ func GetRikerToolsCatalog() []openai.ChatCompletionToolParam {
 		},
 	}
 
-	tools := []openai.ChatCompletionToolParam{addTool, chooseCloneOfBobTool}
+	detectTheRealTopicInUserMessage := openai.ChatCompletionToolParam{
+		Function: openai.FunctionDefinitionParam{
+			Name:        "detect_the_real_topic_in_user_message",
+			Description: openai.String(`select a topic in this list [docker, docker compose, docker bake, docker model runner] by saying I have questions on <topic_name>.`),
+			Parameters: openai.FunctionParameters{
+				"type": "object",
+				"properties": map[string]interface{}{	
+					"topic_name": map[string]string{
+						"type":        "string",
+						"description": "The topic name to detect in the user message. The topic can be one of the following: [docker, docker compose, docker bake, docker model runner].",
+					},
+				},
+				"required": []string{"message"},
+			},
+		},
+	}
+
+	tools := []openai.ChatCompletionToolParam{chooseCloneOfBobTool, detectTheRealTopicInUserMessage}
 	return tools
 }

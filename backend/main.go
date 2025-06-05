@@ -85,9 +85,10 @@ func main() {
 			helpers.ResponseLabel(response, flusher, "error", "Error parsing JSON: "+err.Error())
 		}
 		fmt.Println("🤖 Bob is ready to chat!", data)
+		userQuestion := data["message"]
 
 		riker.Params.Messages = []openai.ChatCompletionMessageParamUnion{
-			openai.UserMessage(data["message"]),
+			openai.UserMessage(userQuestion),
 		}
 
 		// STEP 1: check if there are tool calls to detect in the user message
@@ -115,17 +116,19 @@ func main() {
 			toolCallsJSON, _ := riker.ToolCallsToJSON()
 			fmt.Println("🤖 Tool Calls:\n", toolCallsJSON)
 
+			// IMPORTANT: the job of Riker is only to detect if the user wants to change the current Agent,
+			// and to execute the tool calls.
 			// This method execute the tool calls detected by the Agent.
 			// And add the result to the message list of the Agent.
 			results, err := riker.ExecuteToolCalls(map[string]func(any) (any, error){
 				// TODO: remove this tool
-				"add": func(args any) (any, error) {
-					response.Write([]byte("<feature>Performing addition...</feature>"))
-					flusher.Flush()
-					a := args.(map[string]any)["a"].(float64)
-					b := args.(map[string]any)["b"].(float64)
-					return a + b, nil
-				},
+				//"add": func(args any) (any, error) {
+				//	response.Write([]byte("<feature>Performing addition...</feature>"))
+				//	flusher.Flush()
+				//	a := args.(map[string]any)["a"].(float64)
+				//	b := args.(map[string]any)["b"].(float64)
+				//	return a + b, nil
+				//},
 
 				"choose_clone_of_bob": func(args any) (any, error) {
 
@@ -144,7 +147,15 @@ func main() {
 						txtLabel := "Hey, it's " + cloneName + ", " + currentSelection.Agent.Params.Model
 						helpers.ResponseLabel(response, flusher, "enhancement", txtLabel)
 
-						return cloneName + " is a clone of Bob", nil
+						// NOTE: conversational memory
+						currentSelection.Agent.Params.Messages = append(currentSelection.Agent.Params.Messages,
+							// IMPORTANT: QUESTION: should I use a system message or a agent message?
+							openai.SystemMessage("You have been selected to speak with the user, your name is: "+currentSelection.Name),
+							//openai.SystemMessage("use the above result of the tool calls to answer the user question: "),
+							//openai.UserMessage(userQuestion),
+						)
+
+						return cloneName, nil
 
 					default:
 						helpers.ResponseLabel(response, flusher, "bug", "Unknown clone of Bob: "+cloneName)
@@ -153,6 +164,46 @@ func main() {
 
 					}
 
+				},
+				// IMPORTANT: TODO: check if it could be better to delegate this tool to another tool agent?
+				"detect_the_real_topic_in_user_message": func(args any) (any, error) {
+					helpers.ResponseLabel(response, flusher, "step", "Detecting the real topic in user message...")
+
+					topic := args.(map[string]any)["topic_name"].(string)
+					// Here you can implement your logic to detect the real topic in the user message
+					// For now, we will just return the user message as the detected topic
+					helpers.ResponseLabel(response, flusher, "white", "Topic: "+topic)
+
+					switch topic {
+					case "docker", "docker compose", "docker model runner", "docker bake":
+						// NOTE: change the current selection to the selected clone
+						switch topic {
+						case "docker":
+							currentSelection = agentsCatalog["bob"]
+							helpers.ResponseLabel(response, flusher, "pink", "You are speaking with Bob")
+						case "docker compose":
+							currentSelection = agentsCatalog["bill"]
+							helpers.ResponseLabel(response, flusher, "orange", "You are speaking with Bill")
+						case "docker model runner":
+							currentSelection = agentsCatalog["garfield"]
+							helpers.ResponseLabel(response, flusher, "red", "You are speaking with Garfield")
+						case "docker bake":
+							currentSelection = agentsCatalog["milo"]
+							helpers.ResponseLabel(response, flusher, "warning", "You are speaking with Milo")
+
+						}
+					}
+
+					currentSelection.Agent.Params.Messages = append(currentSelection.Agent.Params.Messages,
+						// IMPORTANT: QUESTION: should I use a system message or a agent message?
+						openai.AssistantMessage("I understand that you want to talk about: "+topic),
+						//openai.SystemMessage("You have been selected to speak with the user, your name is: "+currentSelection.Name),
+						//openai.SystemMessage("use the above result of the tool calls to answer the user question: "),
+						//openai.UserMessage(userQuestion),
+					)
+
+					fmt.Println("🤖 Detected topic in user message:", topic)
+					return topic, nil
 				},
 			})
 
@@ -171,55 +222,51 @@ func main() {
 			}
 
 			// NOTE: conversational memory
-			currentSelection.Agent.Params.Messages = append(currentSelection.Agent.Params.Messages,
-				openai.SystemMessage(strings.Join(results, " ")), // QUESTION: tool message or agent message?
-				openai.SystemMessage("use the above result of the tool calls to answer the user question: "),
-				openai.UserMessage(data["message"]),
-			)
+			//currentSelection.Agent.Params.Messages = append(currentSelection.Agent.Params.Messages,
+			//	openai.SystemMessage("You have been selected to speak with the user, your name is: "+currentSelection.Name),
+			//	//openai.SystemMessage("use the above result of the tool calls to answer the user question: "),
+			//	//openai.UserMessage(userQuestion),
+			//)
 			// NOTE: reset the Riker messages
 			riker.Params.Messages = []openai.ChatCompletionMessageParamUnion{}
 
 		} else {
 			// OPTION 2: if there are no tool calls, just continue the conversation
 			fmt.Println("🤖 No tool calls detected, continuing the conversation...")
-			fmt.Println("📝 user message:", data["message"])
-
-			userQuestion := data["message"]
-
-			// SIMILARITY SEARCH:
-			similarities, err := currentSelection.Agent.RAGMemorySearchSimilaritiesWithText(userQuestion, 0.7)
-			if err != nil {
-				fmt.Println("Error when searching for similarities:", err)
-				// NOTE: do nothing, just continue the conversation
-			}
-			fmt.Println("🎉 Similarities found:", len(similarities))
-			for _, similarity := range similarities {
-				fmt.Println("-", similarity)
-			}
-
-
-			if len(similarities) > 0 {
-				// NOTE: conversational memory, add the similarities to the Agent's message
-				currentSelection.Agent.Params.Messages = append(
-					currentSelection.Agent.Params.Messages,
-					openai.SystemMessage(
-						"Here are some relevant documents found in the RAG memory:\n"+strings.Join(similarities, "\n"),
-					),
-					openai.SystemMessage("Use the above documents to answer the user question: "),
-					openai.UserMessage(userQuestion),
-				)
-			} else {
-				// NOTE: conversational memory, add the question to the Agent's message
-				currentSelection.Agent.Params.Messages = append(
-					currentSelection.Agent.Params.Messages, openai.UserMessage(userQuestion),
-				)
-			}
-
+			fmt.Println("📝 user message:", userQuestion)
 		}
+
+		// STEP 2: SIMILARITY SEARCH:
+		similarities, err := currentSelection.Agent.RAGMemorySearchSimilaritiesWithText(userQuestion, 0.7)
+		if err != nil {
+			fmt.Println("Error when searching for similarities:", err)
+			// NOTE: do nothing, just continue the conversation
+		}
+		fmt.Println("🎉 Similarities found:", len(similarities))
+		for _, similarity := range similarities {
+			fmt.Println("-", similarity)
+		}
+
+		if len(similarities) > 0 {
+			// NOTE: conversational memory, add the similarities to the Agent's message
+			currentSelection.Agent.Params.Messages = append(
+				currentSelection.Agent.Params.Messages,
+				openai.SystemMessage(
+					"Here are some relevant documents found in the RAG memory:\n"+strings.Join(similarities, "\n"),
+				),
+				openai.SystemMessage("Use the above documents to answer the user question: "),
+				openai.UserMessage(userQuestion),
+			)
+		} else {
+			// NOTE: conversational memory, add the question to the Agent's message
+			currentSelection.Agent.Params.Messages = append(
+				currentSelection.Agent.Params.Messages, openai.UserMessage(userQuestion),
+			)
+		}
+
 		fmt.Println("🤖 number of messages in memory:", len(currentSelection.Agent.Params.Messages))
 
-
-		// STEP 2: generate the response using the selected Agent
+		// STEP 3: generate the response using the selected Agent
 		helpers.ResponseLabelNewLine(response, flusher, "info", "Generating response...")
 
 		answer, errCompletion := currentSelection.Agent.ChatCompletionStream(func(self *robby.Agent, content string, err error) error {
