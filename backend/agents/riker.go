@@ -37,6 +37,12 @@ func GetRiker() (*robby.Agent, error) {
 			},
 		),
 		robby.WithTools(GetRikerToolsCatalog()),
+		//robby.WithMCPClient(robby.WithSocatMCPToolkit()),
+		//robby.WithMCPClient(robby.WithDockerMCPToolkit()),
+		//robby.WithMCPTools([]string{"brave_web_search"}), 
+		// NOTE: you must activate the fetch MCP server in Docker MCP Toolkit
+
+
 	)
 	if err != nil {
 		return nil, err

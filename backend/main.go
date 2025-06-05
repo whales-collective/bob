@@ -116,10 +116,12 @@ func main() {
 			toolCallsJSON, _ := riker.ToolCallsToJSON()
 			fmt.Println("🤖 Tool Calls:\n", toolCallsJSON)
 
+
 			// IMPORTANT: the job of Riker is only to detect if the user wants to change the current Agent,
 			// and to execute the tool calls.
 			// This method execute the tool calls detected by the Agent.
 			// And add the result to the message list of the Agent.
+			// BEGIN: execute the tool calls
 			results, err := riker.ExecuteToolCalls(map[string]func(any) (any, error){
 				// TODO: remove this tool
 				//"add": func(args any) (any, error) {
@@ -205,7 +207,7 @@ func main() {
 					fmt.Println("🤖 Detected topic in user message:", topic)
 					return topic, nil
 				},
-			})
+			}) // END: execute the tool calls
 
 			if err != nil {
 				helpers.ResponseLabel(response, flusher, "error", "Tool execution failed: "+err.Error())
