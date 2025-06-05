@@ -38,6 +38,8 @@ func GetKhan() (*robby.Agent, error) {
 		),
 		robby.WithMCPClient(robby.WithSocatMCPToolkit()),
 		//robby.WithMCPClient(robby.WithDockerMCPToolkit()),
+		//robby.WithMCPTools([]string{"fetch"}), 
+
 		robby.WithMCPTools([]string{"brave_web_search"}), 
 		// NOTE: you must activate the fetch MCP server in Docker MCP Toolkit
 
@@ -47,4 +49,20 @@ func GetKhan() (*robby.Agent, error) {
 	}
 	return khan, nil
 }
+
+
+func InitializeKhanAgent() (*AgentConfig, error) {
+	khan, err := GetKhan()
+	if err != nil {
+		return nil, fmt.Errorf("error creating Khan agent: %w", err)
+	}
+
+	return &AgentConfig{
+		Name:        "Khan",
+		Description: "Khan is an agent that helps the user to search the web using Brave Search.",
+		Agent:       khan,
+		ToolAgent:   true, // Indicates that Khan has a tool agent
+	}, nil
+}
+
 

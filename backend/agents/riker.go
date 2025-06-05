@@ -44,6 +44,23 @@ func GetRiker() (*robby.Agent, error) {
 	return riker, nil
 }
 
+func InitializeRikerAgent() (*AgentConfig, error) {
+	riker, err := GetRiker()
+	if err != nil {
+		return nil, fmt.Errorf("error creating Riker agent: %w", err)
+	}
+
+	return &AgentConfig{
+		Name:        "Riker",
+		Description: "Riker is an agent that helps the user to choose a clone of Bob and detect the real topic in the user message.",
+		Agent:       riker,
+		ToolAgent:   true, // Indicates that Riker has a tool agent
+	}, nil
+}
+
+
+
+
 func GetRikerToolsCatalog() []openai.ChatCompletionToolParam {
 	/*
 	addTool := openai.ChatCompletionToolParam{

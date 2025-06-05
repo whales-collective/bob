@@ -8,13 +8,11 @@ import (
 	"net/http"
 	"os"
 	"strings"
-	"we-are-legion/agents"
 	"we-are-legion/helpers"
+	"we-are-legion/workflow"
 
 	"github.com/openai/openai-go"
 	"github.com/sea-monkeys/robby"
-	"golang.org/x/text/cases"
-	"golang.org/x/text/language"
 )
 
 /*
@@ -30,37 +28,18 @@ func GetBytesBody(request *http.Request) []byte {
 
 func main() {
 
-	// create a map of agents
-	agentsCatalog := map[string]*agents.AgentConfig{
-		"bob": func() *agents.AgentConfig {
-			cfg, _ := agents.InitializeBobAgent()
-			return cfg
-		}(),
-		"bill": func() *agents.AgentConfig {
-			cfg, _ := agents.InitializeBillAgent()
-			return cfg
-		}(),
-		"milo": func() *agents.AgentConfig {
-			cfg, _ := agents.InitializeMiloAgent()
-			return cfg
-		}(),
-		"garfield": func() *agents.AgentConfig {
-			cfg, _ := agents.InitializeGarfieldAgent()
-			return cfg
-		}(),
-	}
+	// Get a map of the agents
+	agentsCatalog := workflow.InitializeAgents()
+	// Select the current agent to use
+	selectedAgent := agentsCatalog["bob"]
 
-	currentSelection := agentsCatalog["bob"]
-
-	// NOTE: we need a separate agent for the tool completion
-	riker, err := agents.GetRiker()
-	if err != nil {
-		log.Fatal("😡 Error creating Riker agent: ", err)
-	}
-	khan, err := agents.GetKhan()
-	if err != nil {
-		log.Fatal("😡 Error creating Khan agent: ", err)
-	}
+	// NOTE: we need separate agents for the tool completions
+	// Riker is the agent in charge of detecting if the user wants to change the current Agent,
+	// and to execute the tool calls.
+	// Khan is the agent in charge of detecting if the user wants to use the MCP tools,
+	// and to execute the MCP tool calls.
+	riker := agentsCatalog["riker"].Agent
+	khan := agentsCatalog["khan"].Agent
 
 	var httpPort = os.Getenv("HTTP_PORT")
 	if httpPort == "" {
@@ -68,9 +47,7 @@ func main() {
 	}
 
 	mux := http.NewServeMux()
-	shouldIStopTheCompletion := false
-
-	// Exemple de modifications dans le handler /chat de main.go
+	shouldIStopTheCompletion := false // TODO: implement a way to stop the completion cleanly
 
 	mux.HandleFunc("POST /chat", func(response http.ResponseWriter, request *http.Request) {
 		// add a flusher
@@ -85,13 +62,12 @@ func main() {
 
 		err := json.Unmarshal(body, &data)
 		if err != nil {
-			//response.Write([]byte("😡 Error: " + err.Error()))
 			helpers.ResponseLabel(response, flusher, "error", "Error parsing JSON: "+err.Error())
 		}
-		fmt.Println("🤖 Bob is ready to chat!", data)
+
+		// NOTE: this is the message typed by the user
 		userQuestion := data["message"]
 
-		// NOTE: Riker is the agent in charge of detecting if the user wants to change the current Agent,
 		riker.Params.Messages = []openai.ChatCompletionMessageParamUnion{
 			openai.UserMessage(userQuestion),
 		}
@@ -100,223 +76,48 @@ func main() {
 			openai.UserMessage(userQuestion),
 		}
 
-		// STEP 1: check if there are tool calls to detect in the user message
-		// This is done by the Riker agent, which is in charge of detecting tool calls.
-		// It will return a list of tool calls to execute.
+		// STEP 1: TOOLCALLS: check if there are tool calls to detect in the user message
+		// This is done by the Riker agent for the tool calls
+		// and the Khan agent for the MCP tool calls.
 		helpers.ResponseLabel(response, flusher, "info", "Checking for tool calls...")
 
-		// Always check the TOOLCALLS:
-		toolCalls, err := riker.ToolsCompletion()
-		if err != nil {
-			if len(toolCalls) > 0 {
-				fmt.Println("😡 Error: ", err.Error())
-				helpers.ResponseLabel(response, flusher, "error", "Tool call error detected: "+err.Error())
-			} else {
-				fmt.Println("🙂 no tool calls detected.")
-				helpers.ResponseLabel(response, flusher, "success", "No tool calls detected")
-			}
-		}
-		fmt.Println("🤖 Number of Tool Calls:\n", len(toolCalls))
+		toolCalls, _ := workflow.DetectToolCalls(response, flusher, riker)
+		mcpTooCalls, _ := workflow.DetectMCPToolCalls(response, flusher, khan)
 
-		// Always check the MCP TOOLCALLS:
-		mcpTooCalls, err := khan.ToolsCompletion()
-		if err != nil {
-			if len(mcpTooCalls) > 0 {
-				fmt.Println("😡 Error: ", err.Error())
-				helpers.ResponseLabel(response, flusher, "error", "MCP Tool call error detected: "+err.Error())
-			} else {
-				fmt.Println("🙂 no tool calls detected.")
-				helpers.ResponseLabel(response, flusher, "success", "No MCP tool calls detected")
-			}
-		}
-		fmt.Println("🤖 Number of MCP Tool Calls:\n", len(mcpTooCalls))
-
-		numberOfToolCalls := len(toolCalls)
-		numberOfMCPTooCalls := len(mcpTooCalls)
-
-		fmt.Println("🤖🤖🤖 TOOLCALLS:", numberOfToolCalls, "MCP_TOOLCALLS:", numberOfMCPTooCalls)
-		mcpToolCallsJSON, _ := khan.ToolCallsToJSON()
-		fmt.Println("🤖 MCP Tool Calls:\n", mcpToolCallsJSON)
-
+		// STEP 2: MCP TOOLS EXECUTION if there are any MCP tool calls
 		var mcpResults []string
-		if numberOfMCPTooCalls > 0 {
-			helpers.ResponseLabel(response, flusher, "orange", "Executing MCP tool calls...")
-			// IMPORTANT: the job of Khan is only to detect if the user wants to use the MCP tools,
-			mcpResults, err = khan.ExecuteMCPToolCalls()
-			if err != nil {
-				helpers.ResponseLabel(response, flusher, "error", "MCP Tool execution failed: "+err.Error())
-			} else {
-				helpers.ResponseLabel(response, flusher, "success", "MCP Tool calls executed successfully")
-			}
+		if len(mcpTooCalls) > 0 {
+			mcpResults, _ = workflow.ExecuteMCPToolCalls(response, flusher, khan)
 		}
 
-		// OPTION 1: if there are tool calls, execute them
-		if numberOfToolCalls > 0 {
-			helpers.ResponseLabel(response, flusher, "orange", "Executing tool calls...")
-
-			toolCallsJSON, _ := riker.ToolCallsToJSON()
-			fmt.Println("🤖 Tool Calls:\n", toolCallsJSON)
-
-			// IMPORTANT: the job of Riker is only to detect if the user wants to change the current Agent,
-			// and to execute the tool calls.
-			// This method execute the tool calls detected by the Agent.
-			// And add the result to the message list of the Agent.
-			// BEGIN: execute the tool calls
-			results, err := riker.ExecuteToolCalls(map[string]func(any) (any, error){
-
-				"choose_clone_of_bob": func(args any) (any, error) {
-
-					helpers.ResponseLabel(response, flusher, "yellow", "Selecting Bob clone...")
-					cloneName := args.(map[string]any)["clone_name"].(string)
-					cloneName = strings.ToLower(cloneName)
-
-					switch cloneName {
-					case "bill", "milo", "garfield", "bob":
-						// NOTE: change the current selection to the selected clone
-						currentSelection = agentsCatalog[cloneName]
-
-						caser := cases.Title(language.English)
-						cloneName = caser.String(cloneName)
-
-						txtLabel := "Hey, it's " + cloneName + ", " + currentSelection.Agent.Params.Model
-						helpers.ResponseLabel(response, flusher, "enhancement", txtLabel)
-
-						// NOTE: conversational memory
-						currentSelection.Agent.Params.Messages = append(currentSelection.Agent.Params.Messages,
-							// IMPORTANT: QUESTION: should I use a system message or a agent message?
-							openai.SystemMessage("You have been selected to speak with the user, your name is: "+currentSelection.Name),
-							//openai.SystemMessage("use the above result of the tool calls to answer the user question: "),
-							//openai.UserMessage(userQuestion),
-						)
-
-						return cloneName, nil
-
-					default:
-						helpers.ResponseLabel(response, flusher, "bug", "Unknown clone of Bob: "+cloneName)
-
-						return fmt.Sprintf("Unknown clone of Bob: %s", cloneName), nil
-
-					}
-
-				},
-				// IMPORTANT: TODO: check if it could be better to delegate this tool to another tool agent?
-				"detect_the_real_topic_in_user_message": func(args any) (any, error) {
-					helpers.ResponseLabel(response, flusher, "step", "Detecting the real topic in user message...")
-
-					topic := args.(map[string]any)["topic_name"].(string)
-					// Here you can implement your logic to detect the real topic in the user message
-					// For now, we will just return the user message as the detected topic
-					helpers.ResponseLabel(response, flusher, "white", "Topic: "+topic)
-
-					switch topic {
-					case "docker", "docker compose", "docker model runner", "docker bake":
-						// NOTE: change the current selection to the selected clone
-						switch topic {
-						case "docker":
-							currentSelection = agentsCatalog["bob"]
-							helpers.ResponseLabel(response, flusher, "pink", "You are speaking with Bob")
-						case "docker compose":
-							currentSelection = agentsCatalog["bill"]
-							helpers.ResponseLabel(response, flusher, "orange", "You are speaking with Bill")
-						case "docker model runner":
-							currentSelection = agentsCatalog["garfield"]
-							helpers.ResponseLabel(response, flusher, "red", "You are speaking with Garfield")
-						case "docker bake":
-							currentSelection = agentsCatalog["milo"]
-							helpers.ResponseLabel(response, flusher, "warning", "You are speaking with Milo")
-
-						}
-					}
-
-					currentSelection.Agent.Params.Messages = append(currentSelection.Agent.Params.Messages,
-						// IMPORTANT: QUESTION: should I use a system message or a agent message?
-						openai.AssistantMessage("I understand that you want to talk about: "+topic),
-						//openai.SystemMessage("You have been selected to speak with the user, your name is: "+currentSelection.Name),
-						//openai.SystemMessage("use the above result of the tool calls to answer the user question: "),
-						//openai.UserMessage(userQuestion),
-					)
-
-					fmt.Println("🤖 Detected topic in user message:", topic)
-					return topic, nil
-				},
-			}) // END: execute the tool calls
-
-			if err != nil {
-				helpers.ResponseLabel(response, flusher, "error", "Tool execution failed: "+err.Error())
-			} else {
-				helpers.ResponseLabel(response, flusher, "success", "Tool calls executed successfully")
-			}
-
-			fmt.Println("")
-
-			// Print the results of the tool calls
-			fmt.Println("🤖 Results of the tool calls execution:")
-			for _, result := range results {
-				fmt.Println(result)
-			}
-
-			// NOTE: conversational memory
-			//currentSelection.Agent.Params.Messages = append(currentSelection.Agent.Params.Messages,
-			//	openai.SystemMessage("You have been selected to speak with the user, your name is: "+currentSelection.Name),
-			//	//openai.SystemMessage("use the above result of the tool calls to answer the user question: "),
-			//	//openai.UserMessage(userQuestion),
-			//)
-			// NOTE: reset the Riker messages
-			riker.Params.Messages = []openai.ChatCompletionMessageParamUnion{}
-
+		// STEP 3: TOOL CALLS EXECUTION
+		if len(toolCalls) > 0 {
+			workflow.ExecuteToolCalls(response, flusher, agentsCatalog, riker, selectedAgent)
 		} else {
-			// OPTION 3: if there are no tool calls, just continue the conversation
+			// NOTE: If there are no tool calls, 
+			// just continue the conversation
 			fmt.Println("🤖 No tool calls detected, continuing the conversation...")
 			fmt.Println("📝 user message:", userQuestion)
 		}
 
-		if numberOfMCPTooCalls > 0 && len(mcpResults) > 0 {
-			// NOTE: conversational memory, add the MCP results to the Agent's message
-			currentSelection.Agent.Params.Messages = append(
-				currentSelection.Agent.Params.Messages,
+		// STEP 4: add context to the prompt
+		if len(mcpTooCalls) > 0 && len(mcpResults) > 0 { // OPTION 1: add the result of the MCP tool calls execution to the Agent's message
+			selectedAgent.Agent.Params.Messages = append(
+				selectedAgent.Agent.Params.Messages,
 				openai.SystemMessage("Here are some relevant documents found in the MCP memory:\n"+strings.Join(mcpResults, "\n")),
 				openai.SystemMessage("Use the above documents to answer the user question: "),
 				openai.UserMessage(userQuestion),
 			)
-		} else { // NOTE: make similarity search
-			// BEGIN: similarity search
-			// =============================================
-			// STEP 2: SIMILARITY SEARCH:
-			// =============================================
-			similarities, err := currentSelection.Agent.RAGMemorySearchSimilaritiesWithText(userQuestion, 0.7)
-			if err != nil {
-				fmt.Println("Error when searching for similarities:", err)
-				// NOTE: do nothing, just continue the conversation
-			}
-			fmt.Println("🎉 Similarities found:", len(similarities))
-			//for _, similarity := range similarities {
-			//	fmt.Println("-", similarity)
-			//}
-			if len(similarities) > 0 {
-				// NOTE: conversational memory, add the similarities to the Agent's message
-				currentSelection.Agent.Params.Messages = append(
-					currentSelection.Agent.Params.Messages,
-					openai.SystemMessage(
-						"Here are some relevant documents found in the RAG memory:\n"+strings.Join(similarities, "\n"),
-					),
-					openai.SystemMessage("Use the above documents to answer the user question: "),
-					openai.UserMessage(userQuestion),
-				)
-			} else {
-				// NOTE: conversational memory, add the question to the Agent's message
-				currentSelection.Agent.Params.Messages = append(
-					currentSelection.Agent.Params.Messages, openai.UserMessage(userQuestion),
-				)
-			}
-			// END: similarity search
+		} else { // OPTION 2: make similarity search
+			workflow.SearchSimilarities(selectedAgent, userQuestion)
 		}
 
-		fmt.Println("🤖 number of messages in memory:", len(currentSelection.Agent.Params.Messages))
+		fmt.Println("🧠 number of messages in memory:", len(selectedAgent.Agent.Params.Messages))
 
-		// STEP 3: generate the response using the selected Agent
+		// STEP 5: generate the response using the selected Agent
 		helpers.ResponseLabelNewLine(response, flusher, "info", "Generating response...")
 
-		answer, errCompletion := currentSelection.Agent.ChatCompletionStream(func(self *robby.Agent, content string, err error) error {
+		answer, errCompletion := selectedAgent.Agent.ChatCompletionStream(func(self *robby.Agent, content string, err error) error {
 			response.Write([]byte(content))
 
 			flusher.Flush()
@@ -326,15 +127,14 @@ func main() {
 				return errors.New("🚫 Cancelling request")
 			}
 		})
+
 		if errCompletion != nil {
 			// TODO: handle error
 		}
 		// NOTE: conversational memory, add the answer to the Agent's message
-		currentSelection.Agent.Params.Messages = append(
-			currentSelection.Agent.Params.Messages, openai.AssistantMessage(answer),
+		selectedAgent.Agent.Params.Messages = append(
+			selectedAgent.Agent.Params.Messages, openai.AssistantMessage(answer),
 		)
-
-		// 👋 TODO: IMPORTANT: make a toll calls detection to see if we need to change of agent
 
 	})
 
