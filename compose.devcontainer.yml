@@ -38,7 +38,7 @@ services:
     environment:
       - BACKEND_SERVICE_URL=http://backend:5050
       - PAGE_TITLE=""
-      - PAGE_HEADER=🐳 Docker Model Runner Demo
+      - PAGE_HEADER=🐳 We are legion (we are Bob) 🤖
       - PAGE_ICON=🤖
       - DMR_BASE_URL=${DMR_BASE_URL}
       - MODEL_RUNNER_CHAT_MODEL_BOB=${MODEL_RUNNER_CHAT_MODEL_BOB}

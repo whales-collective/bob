@@ -12,5 +12,6 @@ EOF
 FROM scratch
 WORKDIR /app
 COPY --from=builder /app/web-chat-bot .
+COPY docs /app/docs
 
 CMD ["./web-chat-bot"]
