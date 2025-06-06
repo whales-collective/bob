@@ -1,5 +1,5 @@
 {
-	"name": "🐢 tiny gordon agent",
+	"name": "🤖 we are Bob",
 
 	"dockerComposeFile": "compose.yml",
 	"service": "bob-workspace",
